@@ -1,51 +1,129 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: keycloak
+  name: api_user
   namespace: cookeasy
   labels:
-    app: keycloak
+    app: api_user
 spec:
   ports:
   - name: http
     port: 8080
     targetPort: 8080
   selector:
-    app: keycloak
+    app: api_user
   type: LoadBalancer
 ---
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Secret
 metadata:
-  name: keycloak
-  namespace: cookeasy
-  labels:
-    app: keycloak
+    name: api_user
+    namespace: cookeasy
+data:
+    KEYCLOAK_ADMIN: YXBpX3VzZXI=
+    KEYCLOAK_ADMIN_PASSWORD: QVBJX1VTRVIuMjAyMiEwMQ==
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: mariadb-init-db
+    namespace: mariadb
+data:
+    KC_PROXY: edge
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: api_user
+#   namespace: cookeasy
+#   labels:
+#     app: api_user
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: api_user
+#   template:
+#     metadata:
+#       labels:
+#         app: api_user
+#     spec:
+#       containers:
+#       - name: api_user
+#         image: quay.io/keycloak/keycloak:17.0.0
+#         args: ["start-dev"]
+#         env:
+#         - name: KEYCLOAK_ADMIN
+#           value: "admin"
+#         - name: KEYCLOAK_ADMIN_PASSWORD
+#           value: "admin"
+#         - name: KC_PROXY
+#           value: "edge"
+#         ports:
+#         - name: http
+#           containerPort: 8080
+#         readinessProbe:
+#           httpGet:
+#             path: /realms/master
+#             port: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+    name: api_user
+    namespace: cookeasy
+    labels:
+        app: cookeasy
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: keycloak
-  template:
-    metadata:
-      labels:
-        app: keycloak
-    spec:
-      containers:
-      - name: keycloak
-        image: quay.io/keycloak/keycloak:17.0.0
-        args: ["start-dev"]
-        env:
-        - name: KEYCLOAK_ADMIN
-          value: "admin"
-        - name: KEYCLOAK_ADMIN_PASSWORD
-          value: "admin"
-        - name: KC_PROXY
-          value: "edge"
-        ports:
-        - name: http
-          containerPort: 8080
-        readinessProbe:
-          httpGet:
-            path: /realms/master
-            port: 8080
+    serviceName: api_user
+    replicas: 1
+    selector:
+        matchLabels:
+            app: api_user
+    template:
+        metadata:
+            labels:
+                app: api_user
+        spec:
+            containers:
+            - name: api_user
+              image: quay.io/keycloak/keycloak:17.0.0
+              imagePullPolicy: IfNotPresent
+              command: ["start-dev"]
+              volumeMounts:
+              - name: api_user-data
+                mountPath: /opt/keycloak
+              envFrom:
+              - configMapRef: { name: api_user }
+              - secretRef: { name: api_user }
+            volumes:
+            - name: mariadb-init-db
+              configMap:
+                name: mariadb-init-db
+                defaultMode: 0755
+    volumeClaimTemplates:
+    - metadata:
+        name: api_user-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+            requests:
+                storage: 100Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api_user-ingress
+  namespace: cookeasy
+spec:
+  rules:
+  - host: api_user.haingue.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api_user
+            port:
+              number: 8080
