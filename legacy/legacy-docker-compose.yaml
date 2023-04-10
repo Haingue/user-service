@@ -1,0 +1,15 @@
+version: "3.3"
+services:
+  user_service:
+    build:
+     context: .
+     dockerfile: Dockerfile
+    ports:
+      - 8090:8080
+      - 8091:8443
+    environment:
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: admin
+    volumes:
+      - .data:/opt/jboss/keycloak/data
+      - ./tools:/opt/jboss/tools
